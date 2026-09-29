@@ -18,12 +18,13 @@ Requirements: Node 22, PostgreSQL 16, (for full import/export fidelity) `poppler
 ```bash
 git clone <repo> && cd FollowMe
 npm ci                              # also runs `prisma generate`
-cp .env.example .env                # edit DATABASE_URL if needed (DEMO_MODE=true is included for local dev)
+cp .env.example .env                # edit DATABASE_URL if needed (dev needs nothing else)
 createdb followme                   # or any empty database matching DATABASE_URL
 npm run db:migrate                  # prisma migrate deploy
 npm run db:seed                     # fictional org, 13 users, demo guides taken through the real workflow
 npm run dev                         # http://localhost:3000  (background jobs run inline)
-# production-style: npm run build && npm start   and, separately:   npm run worker
+# production-style: npm run build && DEMO_MODE=true npm start   and, separately:   npm run worker
+#   (`npm start` refuses AUTH_MODE=local unless DEMO_MODE=true; real deployments use AUTH_MODE=entra)
 ```
 
 Sign in with the **role picker** on `/login` (local simulation – dev only). Useful users: `alice` (author), `olivia` (process owner), `rita` (reviewer), `alan` (approver), `pat` (publisher), `lena` (learner, Manchester), `leo` (learner, Leeds), `ada` (admin), `aud` (auditor).

@@ -36,7 +36,9 @@ export function env() {
     if (!parsed.success) {
       throw new Error("Invalid environment: " + parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
     }
-    if (parsed.data.NODE_ENV === "production" && parsed.data.AUTH_MODE === "local") {
+    // `next build` evaluates route modules to collect page data but serves nothing; the guard still applies to `next start`.
+    const building = process.env.NEXT_PHASE === "phase-production-build";
+    if (parsed.data.NODE_ENV === "production" && parsed.data.AUTH_MODE === "local" && !building) {
       if (parsed.data.DEMO_MODE !== "true") throw new Error("AUTH_MODE=local (role simulation) is not permitted when NODE_ENV=production. Set AUTH_MODE=entra, or DEMO_MODE=true for a throwaway demo.");
       console.warn("[followme] WARNING: DEMO_MODE=true with local role simulation in a production build. Anyone can sign in as any user. Never use in a real deployment.");
     }
