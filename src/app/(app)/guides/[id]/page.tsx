@@ -9,7 +9,7 @@ import { listFeedback, liveUrl } from "@/server/services/library";
 import { canEditContent, isOwnerOrAdmin, canReadVersion } from "@/server/authz";
 import { OPEN_STATUSES, type GuideStatus } from "@/lib/roles";
 import { PageHead, SeverityBadge, StatusBadge, fmtDate, fmtDateTime } from "@/components/ui";
-import { CompareForm, FeedbackActions, FindingActions, MetadataForm, RecommendationActions, WorkflowActions, type Perm } from "@/components/GovernanceClient";
+import { CompareForm, FeedbackActions, FindingActions, MetadataForm, RecommendationActions, ReconcileForm, WorkflowActions, type Perm } from "@/components/GovernanceClient";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Guide governance" };
@@ -108,6 +108,7 @@ export default async function GuideGovernance({ params }: { params: Promise<{ id
         </section>
       </div>
 
+      {live && !working && (canEditContent(ctx, guide) || owner) ? <div style={{ marginTop: 16 }}><ReconcileForm guideId={guide.id} /></div> : null}
       {live ? (
         <section className="card" style={{ marginTop: 16 }} aria-labelledby="ln-h"><h2 id="ln-h">Links &amp; distribution</h2>
           <p>Permanent link: <a href={`/g/${guide.documentId}`}>{liveUrl(guide.documentId)}</a> · Short link: <code>/s/{guide.shortCode}</code> · Embed: <code>/embed/g/{guide.documentId}</code></p>

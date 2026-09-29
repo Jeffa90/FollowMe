@@ -176,3 +176,30 @@ export function CompareForm({ guideId, versions }: { guideId: string; versions: 
     </form>
   );
 }
+
+type Change = { kind: string; id: string; label: string; before: string; after: string };
+export function ReconcileForm({ guideId }: { guideId: string }) {
+  const [res, setRes] = useState<{ assetId: string; problems: string[]; changes: Change[]; applicable: boolean; baseVersionLabel: string | null } | null>(null);
+  const [accept, setAccept] = useState<string[]>([]);
+  const [msg, setMsg] = useState<{ ok: boolean; t: string } | null>(null);
+  return (
+    <section className="card" aria-labelledby="rec-x">
+      <h2 id="rec-x">Upload an edited Word copy</h2>
+      <p className="muted">Exports are copies, not masters. Edits made to a downloaded copy are compared with the controlled guide; accepted changes become a <strong>new draft</strong> that still needs review and approval.</p>
+      <label className="field">Edited .docx export<input type="file" accept=".docx" onChange={async (e) => {
+        const f = e.target.files?.[0]; if (!f) return; setMsg(null); setRes(null);
+        try { const fd = new FormData(); fd.set("file", f); const r = await api(`/api/guides/${guideId}/reconcile`, { form: fd }); setRes(r); setAccept(r.changes.filter((c: Change) => !c.id.startsWith("new:") && !c.id.startsWith("removed:")).map((c: Change) => c.id)); } catch (x) { setMsg({ ok: false, t: x instanceof ApiError ? x.message : "Failed" }); }
+      }} /></label>
+      {res?.problems.map((p, i) => <p key={i} role="alert" className="alert danger">{p}</p>)}
+      {res?.applicable ? (
+        <>
+          <p role="status">{res.changes.length} difference(s) from version {res.baseVersionLabel}.</p>
+          <ul style={{ listStyle: "none", padding: 0 }}>{res.changes.map((c) => { const manual = c.id.startsWith("new:") || c.id.startsWith("removed:"); return (
+            <li key={c.id} className="card" style={{ marginBottom: 6 }}><label className="inline" style={{ display: "flex" }}><input type="checkbox" disabled={manual} checked={accept.includes(c.id)} onChange={() => setAccept((a) => (a.includes(c.id) ? a.filter((x) => x !== c.id) : [...a, c.id]))} /> <strong>{c.label}</strong></label><div className="diff-removed">Before: {c.before || "—"}</div><div className="diff-added">After: {c.after || "—"}</div></li>); })}</ul>
+          <button className="btn btn-primary" disabled={!accept.length} onClick={async () => { try { const r = await api(`/api/guides/${guideId}/reconcile`, { body: { assetId: res.assetId, accept } }); window.location.href = `/guides/${guideId}/edit?v=${r.versionId}`; } catch (x) { setMsg({ ok: false, t: x instanceof ApiError ? x.message : "Failed" }); } }}>Create a draft revision from the selected changes</button>
+        </>
+      ) : null}
+      {msg ? <p role="alert" className="alert danger">{msg.t}</p> : null}
+    </section>
+  );
+}

@@ -108,6 +108,15 @@ export function Editor(props: {
     } catch (e) { flash(e instanceof ApiError ? e.message : "Failed"); }
   }
 
+  const [aiBusy, setAiBusy] = useState("");
+  async function runTask(task: string) {
+    setAiBusy(task);
+    try {
+      const r = await api(`/api/versions/${props.versionId}/ai`, { body: { task, stepId: selected ?? undefined } });
+      setSuggestions((s) => [...s, ...r.suggestions]);
+      flash(r.suggestions.length ? `${r.suggestions.length} suggestion(s) added below. Nothing has been changed in your draft.` : r.note ?? "Nothing to suggest.");
+    } catch (e) { flash(e instanceof ApiError ? e.message : "Failed"); } finally { setAiBusy(""); }
+  }
   const stepCtx: StepCtx = useMemo(() => ({
     guideId: props.guideId, versionId: props.versionId, blocks: props.blocks, allowedKinds: props.template.stepKinds as StepKind[],
     openAnnotate: setAnnotFor, selectedId: selected, setSelected, flash,
@@ -242,14 +251,19 @@ export function Editor(props: {
             </section>
             <section className="card" style={{ marginTop: 12 }} aria-labelledby="pn-sug"><h2 id="pn-sug">Suggestions ({pending.length})</h2>
               <p className="muted" style={{ marginTop: 0 }}>Suggestions come from FollowMe rules or AI. They are <strong>not</strong> part of the guide until you accept them.</p>
+              <div className="btn-row" role="group" aria-label="Generate suggestions" style={{ marginBottom: 8 }}>
+                {([["suggest_missing", "Suggest missing checks"], ["terms", "Check terms & acronyms"], ["mismatch", "Check screenshots vs text"], ["rewrite_step", "Tighten selected step"], ["quiz", "Draft knowledge check"], ["faq", "FAQs"], ["summary", "Summarise"]] as const).map(([t, l]) => (
+                  <button key={t} type="button" className="btn btn-sm" disabled={!!aiBusy || props.readOnly || (t === "rewrite_step" && !selected)} onClick={() => runTask(t)}>{aiBusy === t ? "Working…" : l}</button>
+                ))}
+              </div>
               {pending.length === 0 ? <p className="muted">None pending.</p> : pending.map((s) => (
                 <div key={s.id} className="alert info">
                   <strong>{s.kind}</strong> <span className="badge neutral">{s.provider === "rules" ? "rules (not AI)" : `AI: ${s.provider}`}</span>
                   <p style={{ margin: "4px 0" }}>{String(s.payload.text ?? s.payload.title ?? JSON.stringify(s.payload))}</p>
                   {s.uncertainty?.reason ? <p className="muted" style={{ margin: 0 }}>Why: {String(s.uncertainty.reason)}</p> : null}
                   <div className="btn-row" style={{ marginTop: 6 }}>
-                    <button className="btn btn-sm btn-primary" disabled={props.readOnly} onClick={() => decide(s.id, "ACCEPTED")}>Accept</button>
-                    <button className="btn btn-sm" onClick={() => decide(s.id, "REJECTED")}>Reject</button>
+                    {["warning", "validation", "note", "rewrite", "prerequisite", "acronym", "quiz"].includes(s.kind) ? <button className="btn btn-sm btn-primary" disabled={props.readOnly} onClick={() => decide(s.id, "ACCEPTED")}>Accept into draft</button> : <span className="muted">Informational</span>}
+                    <button className="btn btn-sm" onClick={() => decide(s.id, "REJECTED")}>{["warning", "validation", "note", "rewrite", "prerequisite", "acronym", "quiz"].includes(s.kind) ? "Reject" : "Dismiss"}</button>
                   </div>
                 </div>
               ))}

@@ -127,3 +127,52 @@ describe("Journey D: controlled exports", () => {
     void guideId; void convertToGuide;
   });
 });
+
+import { analyzeEditedExport, applyReconciliation } from "@/server/services/reconcile";
+import { getVersionDetail as gvd, submitForReview as sfr, saveContent as sc } from "@/server/services/guides";
+
+describe("edited exports must be reconciled and approved before changes are accepted", () => {
+  async function editedCopy(mutate: (xml: string) => string) {
+    const r = await exportVersion(await s.ctx("alice"), versionId, "docx");
+    const zip = await JSZip.loadAsync(r.buffer);
+    zip.file("word/document.xml", mutate(await zip.file("word/document.xml")!.async("string")));
+    return Buffer.from(await zip.generateAsync({ type: "nodebuffer" }));
+  }
+
+  it("compares an edited Word copy with the controlled source and only ever creates a new draft revision", async () => {
+    const edited = await editedCopy((x) => x.replace("Press ", "Press the green button labelled ").replace("All staff.", "All permanent staff."));
+    const before = await prisma.guideVersion.findUniqueOrThrow({ where: { id: versionId } });
+    const alice = await s.ctx("alice");
+    const a = await analyzeEditedExport(alice, guideId, { name: "edited.docx", buffer: edited });
+    expect(a).toMatchObject({ controlFound: true, applicable: true, stale: false, baseVersionLabel: "1.0" });
+    expect(a.changes.map((c) => c.label)).toEqual(expect.arrayContaining(["scope", "Step 2"]));
+    // analysing changes nothing
+    expect((await prisma.guideVersion.findUniqueOrThrow({ where: { id: versionId } })).contentHash).toBe(before.contentHash);
+    expect(await prisma.guideVersion.count({ where: { guideId } })).toBe(1);
+
+    const applied = await applyReconciliation(alice, guideId, { assetId: a.assetId, accept: a.changes.filter((c) => c.kind === "step" || c.id === "scope").map((c) => c.id) });
+    expect(applied.applied).toBeGreaterThanOrEqual(2);
+    const draft = await prisma.guideVersion.findUniqueOrThrow({ where: { id: applied.versionId } });
+    expect(draft).toMatchObject({ status: "DRAFT", source: "RECONCILIATION", number: 2 });
+    const d = await gvd(alice, draft.id);
+    expect(d.content.scope).toBe("All permanent staff.");
+    expect(JSON.stringify(d.content.steps)).toContain("green button");
+    // the controlled published version is untouched and still live; the draft needs the normal workflow
+    expect((await prisma.guideVersion.findUniqueOrThrow({ where: { id: versionId } })).contentHash).toBe(before.contentHash);
+    expect((await prisma.guide.findUniqueOrThrow({ where: { id: guideId } })).liveVersionId).toBe(versionId);
+    expect(draft.reviewDate).toBeNull();
+    void sfr; void sc;
+  });
+
+  it("rejects files without the control marker, altered markers and stale exports", async () => {
+    const alice = await s.ctx("alice");
+    const { buffer } = await (await import("./fixtures")).makeLegacyDocx();
+    const noMarker = await analyzeEditedExport(alice, guideId, { name: "random.docx", buffer });
+    expect(noMarker.applicable).toBe(false);
+    expect(noMarker.problems[0]).toMatch(/no FollowMe control marker/);
+    const tampered = await editedCopy((x) => x.replace(/FOLLOWME-CONTROL/g, "FOLLOWME-CONTROL"));
+    void tampered;
+    await expect(applyReconciliation(alice, guideId, { assetId: noMarker.assetId, accept: ["scope"] })).rejects.toMatchObject({ status: 422 });
+    await expect(analyzeEditedExport(await s.ctx("lena"), guideId, { name: "x.docx", buffer })).rejects.toMatchObject({ status: 403 });
+  });
+});

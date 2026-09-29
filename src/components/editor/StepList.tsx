@@ -90,7 +90,8 @@ function StepEditor({ step, number, index, count, steps, onChange, ctx, onInsert
       <div className="body">
         {step.origin.flags.length ? <ul className="flag" style={{ margin: "0 0 8px" }}>{step.origin.flags.map((f, i) => <li key={i}><span className="badge warn">{f.code}</span> {f.message}</li>)}</ul> : null}
         {step.kind === "block" && step.blockRef ? (
-          <div className="alert warn"><strong>{step.blockRef.title}</strong> (reusable block v{step.blockRef.version}): {step.blockRef.body}<br /><span className="muted">Edit this block centrally in Reusable blocks; changes are reviewed for every guide that uses it.</span></div>
+          <div className="alert warn"><strong>{step.blockRef.title}</strong> (reusable block v{step.blockRef.version}): {step.blockRef.body}<br /><span className="muted">Edit this block centrally in Reusable blocks; changes are reviewed for every guide that uses it.</span>
+            {(() => { const cur = ctx.blocks.find((b) => b.id === step.blockRef!.blockId); return cur && cur.version > step.blockRef!.version ? <span> <span className="badge warn">Newer version v{cur.version} available</span> <button type="button" className="btn btn-sm" onClick={() => set({ blockRef: { ...step.blockRef!, version: cur.version, title: cur.title, body: cur.body }, title: cur.title })}>Update to latest</button></span> : null; })()}</div>
         ) : (
           <>
             <label className="field">Title <span className="hint">Short, action-oriented headline (e.g. “Click Save”).</span>
