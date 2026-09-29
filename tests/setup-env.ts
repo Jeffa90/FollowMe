@@ -11,4 +11,3 @@ process.env.AI_PROVIDER = "local";
 process.env.WEBHOOK_ALLOW_LOCAL = "true";
 process.env.STORAGE_DRIVER = "local";
 process.env.STORAGE_LOCAL_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "followme-test-"));
-process.env.NODE_ENV = "test";

@@ -127,6 +127,11 @@ export class History<T> {
     this.present = next;
     return next;
   }
+  /** Replace the present without adding an undo entry (used to coalesce rapid typing). */
+  replace(next: T): T {
+    this.present = next;
+    return next;
+  }
   undo(): T {
     const p = this.past.pop();
     if (p !== undefined) {

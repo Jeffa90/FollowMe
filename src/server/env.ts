@@ -23,6 +23,8 @@ const schema = z.object({
   OCR_PROVIDER: z.enum(["tesseract", "none"]).default("tesseract"),
   JOBS_INLINE: z.string().default("true"),
   NODE_ENV: z.string().default("development"),
+  // Explicit opt-in that allows the local role-simulation login in a production build (demos/e2e only, never real deployments).
+  DEMO_MODE: z.string().default("false"),
 });
 
 let cached: z.infer<typeof schema> | undefined;
@@ -35,7 +37,8 @@ export function env() {
       throw new Error("Invalid environment: " + parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
     }
     if (parsed.data.NODE_ENV === "production" && parsed.data.AUTH_MODE === "local") {
-      throw new Error("AUTH_MODE=local (role simulation) is not permitted when NODE_ENV=production");
+      if (parsed.data.DEMO_MODE !== "true") throw new Error("AUTH_MODE=local (role simulation) is not permitted when NODE_ENV=production. Set AUTH_MODE=entra, or DEMO_MODE=true for a throwaway demo.");
+      console.warn("[followme] WARNING: DEMO_MODE=true with local role simulation in a production build. Anyone can sign in as any user. Never use in a real deployment.");
     }
     cached = parsed.data;
   }

@@ -1,0 +1,6 @@
+body{font:14px/1.4 system-ui,sans-serif;width:320px;margin:0;padding:12px;color:#0f172a}
+h1{font-size:16px;margin:0 0 8px}.row{display:flex;gap:8px;flex-wrap:wrap}
+button{font:600 13px system-ui;padding:6px 10px;border-radius:6px;border:1px solid #0f766e;background:#0f766e;color:#fff;cursor:pointer}
+button#pause,button#save{background:#fff;color:#0f766e}button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #1d4ed8;outline-offset:2px}
+label{display:block;margin:8px 0;font-weight:600}input{display:block;width:100%;box-sizing:border-box;padding:6px;margin-top:2px}
+#error{color:#b91c1c;font-weight:600}.hint{color:#475569;font-size:12px}

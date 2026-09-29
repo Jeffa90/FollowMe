@@ -69,6 +69,8 @@ export const originSchema = z.object({
   eventId: z.string().max(60).optional(),
   sourceBlockIds: z.array(z.string().max(60)).max(50).optional(),
   confidence: z.number().min(0).max(1).optional(),
+  /** Set when a person accepted a suggestion: "rules" (deterministic) or an AI provider id. */
+  provider: z.string().max(60).optional(),
   flags: z.array(stepFlagSchema).max(20).default([]),
 });
 export type StepOrigin = z.infer<typeof originSchema>;

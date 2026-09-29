@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>FollowMe capture</title><link rel="stylesheet" href="popup.css"></head>
+<body>
+  <h1>FollowMe capture</h1>
+  <p id="status" role="status" aria-live="polite">Not recording</p>
+  <div class="row">
+    <button id="start">Start recording this tab</button>
+    <button id="pause" hidden>Pause</button>
+    <button id="stop" hidden>Stop &amp; review</button>
+  </div>
+  <p id="error" role="alert" hidden></p>
+  <details id="cfg"><summary>Connection</summary>
+    <label>FollowMe URL <input id="baseUrl" type="url" value="http://localhost:3000"></label>
+    <label>Capture token <input id="token" type="password" autocomplete="off" placeholder="fmt_…"></label>
+    <button id="save">Save</button>
+  </details>
+  <p class="hint">Recording is visible (red REC badge and an on-page banner). Pause instantly with Alt+Shift+P. Keystrokes and passwords are never recorded.</p>
+  <script src="popup.js"></script>
+</body>
+</html>
