@@ -7,7 +7,7 @@ import { audit } from "@/server/audit";
 import { AppError, notFound } from "@/server/errors";
 
 // Local role simulation only. Production uses the Entra ID OIDC adapter (docs/02-architecture/integrations.md).
-export const POST = route({ public: true, limit: [20, 60_000] }, async ({ req, ip }) => {
+export const POST = route({ public: true, limit: [Number(process.env.LOGIN_RATE_LIMIT ?? 20), 60_000] }, async ({ req, ip }) => {
   if (env().AUTH_MODE !== "local") throw notFound();
   const { email } = await parseBody(req, z.object({ email: z.string().email().max(200), org: z.string().max(60).optional() }));
   const user = await prisma.user.findFirst({ where: { email: email.toLowerCase(), active: true } });

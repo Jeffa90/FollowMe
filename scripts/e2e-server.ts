@@ -18,7 +18,7 @@ await admin.end();
 
 const storage = path.resolve(".tmp/e2e-storage");
 fs.rmSync(storage, { recursive: true, force: true });
-const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: url, STORAGE_LOCAL_DIR: storage, APP_BASE_URL: `http://localhost:${PORT}`, DEMO_MODE: "true", AUTH_MODE: "local", JOBS_INLINE: "true", SESSION_SECRET: "e2e-secret-e2e-secret-e2e-secret-12345", NODE_ENV: "production" } as NodeJS.ProcessEnv;
+const env: NodeJS.ProcessEnv = { ...process.env, DATABASE_URL: url, STORAGE_LOCAL_DIR: storage, APP_BASE_URL: `http://localhost:${PORT}`, DEMO_MODE: "true", LOGIN_RATE_LIMIT: "500", AUTH_MODE: "local", JOBS_INLINE: "true", SESSION_SECRET: "e2e-secret-e2e-secret-e2e-secret-12345", NODE_ENV: "production" } as NodeJS.ProcessEnv;
 execSync("npx prisma migrate deploy", { env, stdio: "inherit" });
 execSync("npx tsx prisma/seed.ts", { env, stdio: "inherit" });
 const child = spawn("npx", ["next", "start", "-p", PORT], { env, stdio: "inherit" });
