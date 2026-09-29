@@ -1,0 +1,838 @@
+// FollowMe data model. See docs/02-architecture/data-model.md.
+// Every tenant-owned table carries orgId; the service layer scopes every query by it.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  AUTHOR
+  PROCESS_OWNER
+  REVIEWER
+  APPROVER
+  PUBLISHER
+  LEARNER
+  ADMIN
+  AUDITOR
+}
+
+enum Classification {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum Criticality {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum GuideStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  READY_FOR_APPROVAL
+  APPROVED
+  PUBLISHED
+  UNDER_REVIEW
+  SUPERSEDED
+  ARCHIVED
+}
+
+enum VersionSource {
+  MANUAL
+  CAPTURE
+  IMPORT
+  REVISION
+  URGENT_CORRECTION
+  RECONCILIATION
+}
+
+enum DecisionPhase {
+  REVIEW
+  APPROVAL
+}
+
+enum DecisionKind {
+  APPROVE
+  REJECT
+  REQUEST_CHANGES
+}
+
+enum AssetPurpose {
+  EVIDENCE
+  CONTENT
+  ATTACHMENT
+  IMPORT_SOURCE
+  IMPORT_IMAGE
+}
+
+enum CaptureStatus {
+  RECORDING
+  PAUSED
+  STOPPED
+  PROCESSED
+  DISCARDED
+}
+
+enum ImportStatus {
+  QUEUED
+  PROCESSING
+  NEEDS_REVIEW
+  CONFIRMED
+  REJECTED
+  FAILED
+  DUPLICATE
+  DRY_RUN_OK
+}
+
+enum FeedbackKind {
+  RATING
+  OUTDATED
+  UNCLEAR
+  BROKEN_LINK
+  OTHER
+}
+
+enum WorkStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+}
+
+enum FindingSeverity {
+  BLOCKING_ERROR
+  WARNING
+  SUGGESTION
+  ACCEPTED_EXCEPTION
+}
+
+enum FindingStatus {
+  OPEN
+  ACCEPTED_EXCEPTION
+  RESOLVED
+}
+
+enum RecommendationStatus {
+  OPEN
+  ACCEPTED
+  DISMISSED
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum SuggestionStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model Organization {
+  id              String   @id @default(cuid())
+  name            String
+  slug            String   @unique
+  dataRegion      String   @default("uk-south")
+  aiPolicy        Json     @default("{}")
+  capturePolicy   Json     @default("{}")
+  retentionPolicy Json     @default("{}")
+  legalHold       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  sites       Site[]
+  teams       Team[]
+  users       User[]
+  guides      Guide[]
+  templates   Template[]
+  workflows   Workflow[]
+}
+
+model Site {
+  id     String @id @default(cuid())
+  orgId  String
+  code   String
+  name   String
+  org    Organization @relation(fields: [orgId], references: [id])
+  users  User[]
+  guides Guide[]
+  teams  Team[]
+
+  @@unique([orgId, code])
+}
+
+model Team {
+  id     String  @id @default(cuid())
+  orgId  String
+  name   String
+  siteId String?
+  org    Organization @relation(fields: [orgId], references: [id])
+  site   Site?        @relation(fields: [siteId], references: [id])
+  users  User[]
+
+  @@unique([orgId, name])
+}
+
+model User {
+  id            String         @id @default(cuid())
+  orgId         String
+  email         String
+  name          String
+  active        Boolean        @default(true)
+  deactivatedAt DateTime?
+  roles         Role[]
+  clearance     Classification @default(INTERNAL)
+  siteId        String?
+  teamId        String?
+  allSites      Boolean        @default(true)
+  siteIds       String[]       @default([])
+  jobTitle      String?
+  createdAt     DateTime       @default(now())
+
+  org  Organization @relation(fields: [orgId], references: [id])
+  site Site?        @relation(fields: [siteId], references: [id])
+  team Team?        @relation(fields: [teamId], references: [id])
+
+  sessions   Session[]
+  apiTokens  ApiToken[]
+  favourites Favourite[]
+  recents    RecentView[]
+  notifications Notification[]
+
+  @@unique([orgId, email])
+}
+
+model Session {
+  id        String    @id @default(cuid())
+  userId    String
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  ip        String?
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model ApiToken {
+  id         String    @id @default(cuid())
+  orgId      String
+  userId     String
+  name       String
+  tokenHash  String    @unique
+  scopes     String[]
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  lastUsedAt DateTime?
+  user       User      @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model Template {
+  id          String   @id @default(cuid())
+  orgId       String
+  key         String
+  name        String
+  description String   @default("")
+  definition  Json
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  org         Organization @relation(fields: [orgId], references: [id])
+  guides      Guide[]
+
+  @@unique([orgId, key])
+}
+
+model Workflow {
+  id                  String  @id @default(cuid())
+  orgId               String
+  key                 String
+  name                String
+  reviewMin           Int     @default(1)
+  stages              Json
+  requireSegregation  Boolean @default(true)
+  isDefault           Boolean @default(false)
+  org                 Organization @relation(fields: [orgId], references: [id])
+  guides              Guide[]
+
+  @@unique([orgId, key])
+}
+
+model TaxonomyTerm {
+  id       String  @id @default(cuid())
+  orgId    String
+  kind     String
+  code     String
+  label    String
+  parentId String?
+
+  @@unique([orgId, kind, code])
+}
+
+model Synonym {
+  id         String   @id @default(cuid())
+  orgId      String
+  kind       String   @default("SYNONYM")
+  term       String
+  expansions String[]
+
+  @@unique([orgId, kind, term])
+}
+
+model RetiredReference {
+  id          String  @id @default(cuid())
+  orgId       String
+  kind        String
+  value       String
+  replacement String?
+  note        String  @default("")
+
+  @@unique([orgId, kind, value])
+}
+
+model Guide {
+  id                  String         @id @default(cuid())
+  orgId               String
+  documentId          String
+  shortCode           String         @unique
+  templateId          String
+  workflowId          String?
+  title               String
+  ownerId             String?
+  backupOwnerId       String?
+  escalationUserId    String?
+  escalationPath      String         @default("")
+  reviewFrequencyDays Int            @default(365)
+  siteId              String?
+  businessUnit        String?
+  department          String?
+  processCode         String?
+  functionCode        String?
+  categories          String[]       @default([])
+  systems             String[]       @default([])
+  applications        String[]       @default([])
+  websites            String[]       @default([])
+  urlPatterns         String[]       @default([])
+  sapTransactions     String[]       @default([])
+  businessRoles       String[]       @default([])
+  classification      Classification @default(INTERNAL)
+  criticality         Criticality    @default(MEDIUM)
+  legalHold           Boolean        @default(false)
+  archivedAt          DateTime?
+  createdById         String
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  liveVersionId       String?        @unique
+  orphanedSince       DateTime?
+
+  org      Organization @relation(fields: [orgId], references: [id])
+  template Template     @relation(fields: [templateId], references: [id])
+  workflow Workflow?    @relation(fields: [workflowId], references: [id])
+  site     Site?        @relation(fields: [siteId], references: [id])
+  versions GuideVersion[]
+  feedback Feedback[]
+  findings HealthFinding[]
+  recommendations ReviewRecommendation[]
+
+  @@unique([orgId, documentId])
+  @@index([orgId, ownerId])
+}
+
+model GuideVersion {
+  id                  String        @id @default(cuid())
+  guideId             String
+  orgId               String
+  number              Int
+  label               String
+  status              GuideStatus   @default(DRAFT)
+  content             Json
+  contentHash         String
+  rev                 Int           @default(1)
+  authorId            String
+  contributorIds      String[]      @default([])
+  submissionCycle     Int           @default(0)
+  source              VersionSource @default(MANUAL)
+  sourceRef           String?
+  importConfirmed     Boolean       @default(true)
+  revisionSummary     String        @default("")
+  urgent              Boolean       @default(false)
+  urgentReason        String?
+  controlSnapshot     Json?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  submittedAt         DateTime?
+  approvedAt          DateTime?
+  publishedAt         DateTime?
+  publishedById       String?
+  effectiveDate       DateTime?
+  reviewDate          DateTime?
+  supersededAt        DateTime?
+  supersededByNumber  Int?
+
+  guide     Guide  @relation(fields: [guideId], references: [id])
+  decisions ApprovalDecision[]
+
+  @@unique([guideId, number])
+  @@index([orgId, status])
+}
+
+model ApprovalDecision {
+  id         String        @id @default(cuid())
+  orgId      String
+  versionId  String
+  cycle      Int
+  phase      DecisionPhase
+  stageIndex Int           @default(0)
+  stageName  String        @default("")
+  userId     String
+  userName   String
+  decision   DecisionKind
+  comment    String        @default("")
+  decidedAt  DateTime      @default(now())
+  version    GuideVersion  @relation(fields: [versionId], references: [id])
+
+  @@index([versionId])
+}
+
+model Asset {
+  id             String       @id @default(cuid())
+  orgId          String
+  sha256         String
+  mime           String
+  size           Int
+  storageKey     String
+  originalName   String
+  purpose        AssetPurpose
+  width          Int?
+  height         Int?
+  createdById    String?
+  createdAt      DateTime     @default(now())
+  guideId        String?
+  captureSessionId String?
+  importItemId   String?
+  scanResult     String       @default("clean")
+
+  @@index([orgId, sha256])
+  @@index([guideId])
+}
+
+model CaptureSession {
+  id              String        @id @default(cuid())
+  orgId           String
+  userId          String
+  status          CaptureStatus @default(RECORDING)
+  title           String?
+  startUrl        String?
+  appName         String?
+  extensionVersion String?
+  policySnapshot  Json          @default("{}")
+  startedAt       DateTime      @default(now())
+  endedAt         DateTime?
+  guideId         String?
+  versionId       String?
+  eventCount      Int           @default(0)
+  events          CaptureEvent[]
+
+  @@index([orgId, userId])
+}
+
+model CaptureEvent {
+  id                String   @id @default(cuid())
+  orgId             String
+  sessionId         String
+  seq               Int
+  type              String
+  at                DateTime
+  url               String
+  pageTitle         String   @default("")
+  target            Json     @default("{}")
+  viewport          Json     @default("{}")
+  rect              Json?
+  screenshotAssetId String?
+  redactions        Json     @default("[]")
+  sensitiveHits     Int      @default(0)
+  session           CaptureSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, seq])
+}
+
+model ImportBatch {
+  id          String       @id @default(cuid())
+  orgId       String
+  name        String
+  createdById String
+  dryRun      Boolean      @default(false)
+  source      String       @default("UPLOAD")
+  status      String       @default("OPEN")
+  totals      Json         @default("{}")
+  createdAt   DateTime     @default(now())
+  completedAt DateTime?
+  items       ImportItem[]
+}
+
+model ImportItem {
+  id            String       @id @default(cuid())
+  orgId         String
+  batchId       String?
+  createdById   String
+  filename      String
+  mime          String
+  size          Int
+  sha256        String
+  sourceAssetId String
+  status        ImportStatus @default(QUEUED)
+  extracted     Json?
+  conversion    Json?
+  warnings      Json         @default("[]")
+  guideId       String?
+  versionId     String?
+  duplicateOfId String?
+  groupKeys     Json         @default("{}")
+  error         String?
+  confirmedById String?
+  confirmedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  batch         ImportBatch? @relation(fields: [batchId], references: [id])
+
+  @@index([orgId, status])
+  @@index([batchId])
+}
+
+model Feedback {
+  id        String       @id @default(cuid())
+  orgId     String
+  guideId   String
+  versionId String
+  stepId    String?
+  userId    String?
+  kind      FeedbackKind
+  rating    Int?
+  comment   String       @default("")
+  status    WorkStatus   @default(OPEN)
+  createdAt DateTime     @default(now())
+  resolvedAt DateTime?
+  guide     Guide        @relation(fields: [guideId], references: [id])
+
+  @@index([guideId, kind])
+}
+
+model ReviewRecommendation {
+  id          String               @id @default(cuid())
+  orgId       String
+  guideId     String
+  versionId   String?
+  source      String
+  reasons     Json
+  dedupeKey   String
+  status      RecommendationStatus @default(OPEN)
+  createdAt   DateTime             @default(now())
+  resolvedById String?
+  resolvedAt  DateTime?
+  resolutionNote String?
+  guide       Guide                @relation(fields: [guideId], references: [id])
+
+  @@index([orgId, status])
+  @@index([guideId, dedupeKey])
+}
+
+model HealthFinding {
+  id            String          @id @default(cuid())
+  orgId         String
+  guideId       String
+  versionId     String
+  ruleId        String
+  severity      FindingSeverity
+  status        FindingStatus   @default(OPEN)
+  stepId        String?
+  message       String
+  explanation   String
+  evidence      Json            @default("{}")
+  exceptionReason String?
+  acceptedById  String?
+  detectedAt    DateTime        @default(now())
+  guide         Guide           @relation(fields: [guideId], references: [id])
+
+  @@unique([versionId, ruleId, stepId])
+  @@index([guideId])
+}
+
+model ContentBlock {
+  id               String   @id @default(cuid())
+  orgId            String
+  key              String
+  kind             String
+  title            String
+  body             String
+  version          Int      @default(1)
+  requiresReapproval Boolean @default(true)
+  updatedAt        DateTime @updatedAt
+  history          ContentBlockVersion[]
+
+  @@unique([orgId, key])
+}
+
+model ContentBlockVersion {
+  id        String       @id @default(cuid())
+  blockId   String
+  version   Int
+  title     String
+  body      String
+  changedById String
+  changedAt DateTime     @default(now())
+  block     ContentBlock @relation(fields: [blockId], references: [id])
+
+  @@unique([blockId, version])
+}
+
+model ProcessMap {
+  id        String   @id @default(cuid())
+  orgId     String
+  title     String
+  ownerId   String
+  status    String   @default("DRAFT")
+  content   Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SearchChunk {
+  id          String  @id @default(cuid())
+  orgId       String
+  guideId     String
+  versionId   String
+  stepId      String?
+  kind        String
+  title       String
+  text        String
+  // tsvector generated column added in migration SQL (see 0002_search_and_immutability)
+  tsv         Unsupported("tsvector")?
+
+  @@index([orgId, guideId])
+  @@index([versionId])
+}
+
+model SearchLog {
+  id          String   @id @default(cuid())
+  orgId       String
+  query       String
+  normalised  String
+  resultCount Int
+  filters     Json     @default("{}")
+  at          DateTime @default(now())
+
+  @@index([orgId, at])
+}
+
+model ViewEvent {
+  id        String   @id @default(cuid())
+  orgId     String
+  guideId   String
+  versionId String
+  channel   String   @default("web")
+  at        DateTime @default(now())
+
+  @@index([orgId, guideId])
+}
+
+model Favourite {
+  userId  String
+  guideId String
+  at      DateTime @default(now())
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@id([userId, guideId])
+}
+
+model RecentView {
+  userId  String
+  guideId String
+  at      DateTime @default(now())
+  user    User     @relation(fields: [userId], references: [id])
+
+  @@id([userId, guideId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  orgId     String
+  userId    String
+  kind      String
+  message   String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, readAt])
+}
+
+model AuditEvent {
+  id         String   @id @default(cuid())
+  orgId      String
+  seq        BigInt
+  at         DateTime @default(now())
+  actorId    String?
+  actorLabel String
+  action     String
+  entityType String
+  entityId   String
+  guideId    String?
+  versionId  String?
+  summary    String
+  detail     Json     @default("{}")
+  ip         String?
+  requestId  String?
+  prevHash   String
+  hash       String
+
+  @@unique([orgId, seq])
+  @@index([orgId, guideId])
+  @@index([orgId, action])
+}
+
+model Job {
+  id          String    @id @default(cuid())
+  queue       String    @default("default")
+  type        String
+  orgId       String?
+  payload     Json
+  status      JobStatus @default(QUEUED)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3)
+  runAt       DateTime  @default(now())
+  lockedAt    DateTime?
+  lockedBy    String?
+  lastError   String?
+  result      Json?
+  createdAt   DateTime  @default(now())
+  finishedAt  DateTime?
+
+  @@index([status, runAt])
+}
+
+model WebhookSubscription {
+  id        String   @id @default(cuid())
+  orgId     String
+  url       String
+  secret    String
+  events    String[]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  deliveries WebhookDelivery[]
+}
+
+model WebhookDelivery {
+  id             String   @id @default(cuid())
+  orgId          String
+  subscriptionId String
+  event          String
+  payload        Json
+  status         String   @default("PENDING")
+  responseCode   Int?
+  attempts       Int      @default(0)
+  lastError      String?
+  createdAt      DateTime @default(now())
+  deliveredAt    DateTime?
+  subscription   WebhookSubscription @relation(fields: [subscriptionId], references: [id])
+}
+
+model ExportRecord {
+  id         String   @id @default(cuid())
+  orgId      String
+  guideId    String
+  versionId  String
+  format     String
+  exportedById String
+  exportedAt DateTime @default(now())
+  sha256     String
+  controlRef String
+}
+
+model AiSuggestion {
+  id            String           @id @default(cuid())
+  orgId         String
+  guideId       String
+  versionId     String
+  stepId        String?
+  kind          String
+  provider      String
+  promptVersion String
+  payload       Json
+  uncertainty   Json             @default("{}")
+  status        SuggestionStatus @default(PENDING)
+  createdById   String
+  createdAt     DateTime         @default(now())
+  decidedById   String?
+  decidedAt     DateTime?
+
+  @@index([versionId])
+}
+
+model AiQuestion {
+  id          String   @id @default(cuid())
+  orgId       String
+  question    String
+  answered    Boolean
+  citedGuides String[] @default([])
+  provider    String
+  at          DateTime @default(now())
+
+  @@index([orgId, answered])
+}
+
+model Acknowledgement {
+  id        String   @id @default(cuid())
+  orgId     String
+  guideId   String
+  versionId String
+  userId    String
+  kind      String
+  at        DateTime @default(now())
+  dueDate   DateTime?
+
+  @@index([guideId, kind])
+  @@index([userId])
+}
+
+model QuizAttempt {
+  id        String   @id @default(cuid())
+  orgId     String
+  guideId   String
+  versionId String
+  userId    String
+  score     Int
+  total     Int
+  passed    Boolean
+  at        DateTime @default(now())
+
+  @@index([guideId])
+}
+
+model CompetencySignoff {
+  id          String   @id @default(cuid())
+  orgId       String
+  guideId     String
+  versionId   String
+  learnerId   String
+  assessorId  String
+  checklist   Json
+  outcome     String
+  signedAt    DateTime @default(now())
+  reassessOn  DateTime?
+
+  @@index([guideId])
+  @@index([learnerId])
+}

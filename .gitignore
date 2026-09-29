@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+dist
+extension/dist
+src/generated
+.env
+.env.local
+storage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.tmp/
+coverage/
