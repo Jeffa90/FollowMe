@@ -14,7 +14,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (hasRole(ctx, "PROCESS_OWNER", "ADMIN", "PUBLISHER", "AUDITOR")) items.push({ href: "/dashboard", label: "Owners & reviews" });
   if (hasRole(ctx, "PROCESS_OWNER", "ADMIN", "AUDITOR", "PUBLISHER")) items.push({ href: "/analytics", label: "Analytics" });
   if (hasRole(ctx, "AUTHOR", "PROCESS_OWNER", "ADMIN")) items.push({ href: "/blocks", label: "Reusable blocks" });
-  items.push({ href: "/training", label: "Training" });
+  items.push({ href: "/maps", label: "Process maps" }, { href: "/training", label: "Training" });
   if (hasRole(ctx, "ADMIN")) items.push({ href: "/admin", label: "Admin" });
   if (hasRole(ctx, "ADMIN", "AUDITOR")) items.push({ href: "/audit", label: "Audit" });
   return (

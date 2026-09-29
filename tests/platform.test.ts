@@ -176,3 +176,33 @@ describe("retention, legal hold and administration", () => {
     expect(await verifyAuditChain(s.org.id)).toMatchObject({ ok: true });
   });
 });
+
+import { createMap, updateMap, publishMap, getMap, listMaps } from "@/server/services/maps";
+describe("process maps assemble published guides into an end-to-end process", () => {
+  it("validates structure, requires published guides, and resolves references against the viewer's permissions", async () => {
+    const docId = (await prisma.guide.findUniqueOrThrow({ where: { id: plainGuide } })).documentId;
+    const olivia = await s.ctx("olivia");
+    const m = await createMap(await s.ctx("alice"), { title: "Book and use a room" });
+    const content = { triggers: ["Employee needs a room"], inputs: ["Date and attendees"], outputs: ["Room confirmation"], policies: ["Facilities policy"], forms: [],
+      nodes: [{ id: "a", type: "task", title: "Book the room", role: "Employee", guideDocumentId: docId, controls: ["Manager approval above 10 people"], next: [{ to: "b", label: "" }] },
+        { id: "b", type: "decision", title: "Is a caterer needed?", role: "Employee", controls: [], next: [{ to: "c", label: "Yes" }, { to: "d", label: "No" }] },
+        { id: "c", type: "handoff", title: "Hand over to Facilities", role: "Facilities", controls: [], next: [{ to: "d", label: "" }] },
+        { id: "d", type: "task", title: "Confirm booking", role: "Facilities", controls: [], next: [] }] };
+    await updateMap(await s.ctx("alice"), m.id, { content });
+    await expect(publishMap(await s.ctx("alice"), m.id)).rejects.toMatchObject({ status: 403 });
+    await updateMap(await s.ctx("alice"), m.id, { content: { ...content, nodes: [...content.nodes, { id: "z", type: "task", title: "Orphan step", role: "", controls: [], next: [{ to: "nope", label: "" }] }] } });
+    await expect(publishMap(olivia, m.id)).rejects.toMatchObject({ status: 422 });
+    await updateMap(await s.ctx("alice"), m.id, { content });
+    await publishMap(olivia, m.id);
+    await expect(updateMap(await s.ctx("alice"), m.id, { content })).rejects.toMatchObject({ status: 409 }); // published maps are immutable
+    const v = await getMap(await s.ctx("lena"), m.id);
+    expect(v.refs[docId]).toMatchObject({ available: true });
+    // a guide the viewer cannot see is shown as unavailable rather than leaking its title
+    await prisma.guide.update({ where: { id: plainGuide }, data: { classification: "RESTRICTED" } });
+    expect((await getMap(await s.ctx("lena"), m.id)).refs[docId]).toEqual({ title: docId, available: false });
+    await prisma.guide.update({ where: { id: plainGuide }, data: { classification: "INTERNAL" } });
+    const draft = await createMap(await s.ctx("alice"), { title: "Hidden draft" });
+    expect((await listMaps(await s.ctx("lena"))).map((x) => x.id)).not.toContain(draft.id);
+    await expect(getMap(await s.ctx("lena"), draft.id)).rejects.toMatchObject({ status: 404 });
+  });
+});
