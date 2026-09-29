@@ -6,8 +6,10 @@ import { Inline } from "@/components/GuideBody";
 
 export function GuidedView({ documentId, versionId, title, versionLabel, steps }: { documentId: string; versionId: string; title: string; versionLabel: string; steps: { step: Step; number: string; depth: number }[] }) {
   const [i, setI] = useState(0);
+  // Deep links to a step (#step-<id>) can only be read on the client after hydration.
   useEffect(() => {
     const fromHash = steps.findIndex((s) => `#step-${s.step.id}` === window.location.hash);
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (fromHash >= 0) setI(fromHash);
   }, [steps]);
   useEffect(() => {

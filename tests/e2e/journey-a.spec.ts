@@ -6,7 +6,8 @@ import path from "node:path";
 
 const BASE = `http://localhost:${process.env.E2E_PORT ?? "3100"}`;
 const EXT = path.resolve("extension/dist");
-const CHROME = process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const LOCAL_CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const CHROME = process.env.CHROMIUM_PATH ?? (fs.existsSync(LOCAL_CHROME) ? LOCAL_CHROME : chromium.executablePath());
 const SECRET_PASSWORD = "S3cretPassw0rd!";
 const CARD = "4111111111111111";
 

@@ -7,10 +7,10 @@ import { PageHead, StatusBadge, fmtDate } from "@/components/ui";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Library" };
 
+/** Renders ts_headline output: [[match]] markers become <mark>; everything else is escaped text. */
 function Snippet({ text }: { text: string }) {
-  const parts = text.split(/(\[\[|\]\])/);
-  let on = false;
-  return <>{parts.map((p, i) => (p === "[[" ? ((on = true), null) : p === "]]" ? ((on = false), null) : on ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}</>;
+  const parts = text.split(/\[\[|\]\]/); // even indexes are plain text, odd indexes are matches
+  return <>{parts.map((p, i) => (i % 2 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}</>;
 }
 
 export default async function Library({ searchParams }: { searchParams: Promise<Record<string, string | undefined>> }) {
@@ -32,8 +32,8 @@ export default async function Library({ searchParams }: { searchParams: Promise<
     const versions = await prisma.guideVersion.findMany({ where: { id: { in: guides.map((g) => g.liveVersionId!) } } });
     browse = guides.map((g) => { const v = versions.find((x) => x.id === g.liveVersionId)!; return { documentId: g.documentId, title: g.title, status: v.status, reviewDate: v.reviewDate, systems: g.systems }; }).filter((g) => !filters.status || g.status === filters.status);
   }
-  const Sel = ({ name, label, options }: { name: string; label: string; options: { value: string; label: string }[] }) => (
-    <label className="field" style={{ margin: 0 }}>{label}
+  const sel = (name: string, label: string, options: { value: string; label: string }[]) => (
+    <label key={name} className="field" style={{ margin: 0 }}>{label}
       <select name={name} defaultValue={sp[name] ?? ""}><option value="">Any</option>{options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
     </label>
   );
@@ -47,12 +47,12 @@ export default async function Library({ searchParams }: { searchParams: Promise<
           <button className="btn btn-primary" type="submit">Search</button>
         </div>
         <div className="grid cols-3">
-          <Sel name="siteId" label="Site" options={facets.sites.map((s) => ({ value: s.id, label: s.name }))} />
-          <Sel name="processCode" label="Process" options={facets.processes.map((p) => ({ value: p, label: p }))} />
-          <Sel name="ownerId" label="Owner" options={facets.owners.map((o) => ({ value: o.id, label: o.name }))} />
-          <Sel name="system" label="System" options={facets.systems.map((p) => ({ value: p, label: p }))} />
-          <Sel name="category" label="Category" options={facets.categories.map((p) => ({ value: p, label: p }))} />
-          <Sel name="status" label="Status" options={[{ value: "PUBLISHED", label: "Published" }, { value: "UNDER_REVIEW", label: "Under review" }]} />
+          {sel("siteId", "Site", facets.sites.map((s) => ({ value: s.id, label: s.name })))}
+          {sel("processCode", "Process", facets.processes.map((p) => ({ value: p, label: p })))}
+          {sel("ownerId", "Owner", facets.owners.map((o) => ({ value: o.id, label: o.name })))}
+          {sel("system", "System", facets.systems.map((p) => ({ value: p, label: p })))}
+          {sel("category", "Category", facets.categories.map((p) => ({ value: p, label: p })))}
+          {sel("status", "Status", [{ value: "PUBLISHED", label: "Published" }, { value: "UNDER_REVIEW", label: "Under review" }])}
         </div>
       </form>
       <section aria-live="polite" style={{ marginTop: 16 }}>

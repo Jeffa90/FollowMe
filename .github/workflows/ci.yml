@@ -1,0 +1,42 @@
+name: CI
+on:
+  push: { branches: [main, "claude/**"] }
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_USER: followme, POSTGRES_PASSWORD: followme, POSTGRES_DB: followme }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U followme" --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://followme:followme@localhost:5432/followme
+      TEST_DATABASE_URL: postgresql://followme:followme@localhost:5432/followme_test
+      SESSION_SECRET: ci-secret-ci-secret-ci-secret-ci-secret
+      DEMO_MODE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - name: System dependencies (poppler for PDF pages/images, tesseract for OCR, fonts for PDF export)
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils tesseract-ocr fonts-dejavu-core
+      - run: npm ci
+      - run: npx prisma generate
+      - name: Migrations apply cleanly to an empty database
+        run: npx prisma migrate deploy
+      - name: Seed data loads
+        run: npx tsx prisma/seed.ts
+      - run: npm run typecheck
+      - run: npm run lint
+      - name: Unit, integration, security, AI-grounding, import and export tests
+        run: npm test
+      - run: npx playwright install --with-deps chromium
+      - name: Build extension + app, then end-to-end and accessibility tests
+        run: npm run build && npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with: { name: playwright-report, path: "playwright-report\ntest-results" }

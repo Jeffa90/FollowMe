@@ -53,11 +53,18 @@ test("undo and redo (buttons and keyboard) with autosave and reload persistence"
   await expect(title).not.toHaveValue("First title");
   await page.getByRole("button", { name: "Redo" }).click();
   await expect(title).toHaveValue("First title");
+  // real keystrokes keep focus in the field (regression: inline components used to remount on every keystroke)
+  const purpose = page.getByLabel(/^Purpose/);
+  await purpose.click();
+  await page.keyboard.type("Typed one key at a time", { delay: 25 });
+  await expect(purpose).toBeFocused();
+  await expect(purpose).toHaveValue("Typed one key at a time");
   await page.locator("h2#ed-steps").click();
-  await page.keyboard.press("Control+z");
-  await expect(title).not.toHaveValue("First title");
-  await page.keyboard.press("Control+y");
+  await page.keyboard.press("Control+z"); // undoes the most recent (coalesced) edit: the purpose typing
+  await expect(purpose).not.toHaveValue("Typed one key at a time");
   await expect(title).toHaveValue("First title");
+  await page.keyboard.press("Control+y");
+  await expect(purpose).toHaveValue("Typed one key at a time");
   await expect(page.getByTestId("save-status")).toContainText("Saved", { timeout: 15_000 });
   await page.reload();
   await expect(page.getByLabel("Title *")).toHaveValue("First title");

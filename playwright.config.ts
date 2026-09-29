@@ -1,4 +1,9 @@
 import { defineConfig } from "@playwright/test";
+import fs from "node:fs";
+
+// Use the pre-installed Chromium when present (sandboxed environments); otherwise Playwright's own browser.
+const LOCAL_CHROME = "/opt/pw-browsers/chromium-1194/chrome-linux/chrome";
+const executablePath = process.env.CHROMIUM_PATH ?? (fs.existsSync(LOCAL_CHROME) ? LOCAL_CHROME : undefined);
 
 const PORT = process.env.E2E_PORT ?? "3100";
 export default defineConfig({
@@ -12,7 +17,7 @@ export default defineConfig({
   use: {
     baseURL: `http://localhost:${PORT}`,
     trace: "retain-on-failure",
-    launchOptions: { executablePath: process.env.CHROMIUM_PATH ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--no-sandbox"] },
+    launchOptions: { executablePath, args: ["--no-sandbox"] },
   },
   webServer: {
     command: "npx tsx scripts/e2e-server.ts",

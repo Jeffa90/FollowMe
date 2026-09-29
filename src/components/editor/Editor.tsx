@@ -36,46 +36,49 @@ export function Editor(props: {
   const [suggestions, setSuggestions] = useState<Suggestion[]>(props.suggestions);
   const [toast, setToast] = useState("");
   const hist = useRef(new History<GuideContent>(props.initial));
-  const [, force] = useState(0);
+  const [histFlags, setHistFlags] = useState({ canUndo: false, canRedo: false });
+  const syncHist = () => setHistFlags({ canUndo: hist.current.canUndo, canRedo: hist.current.canRedo });
   const lastKey = useRef<{ key: string; t: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const revRef = useRef(rev);
   const dirty = useRef(false);
   const saving = useRef(false);
-  revRef.current = rev;
+  useEffect(() => { revRef.current = rev; }, [rev]);
 
   const flash = useCallback((m: string) => { setToast(m); setTimeout(() => setToast(""), 4000); }, []);
 
-  const doSave = useCallback(async () => {
-    if (saving.current) { timer.current = setTimeout(doSave, 500); return; }
+  const doSaveRef = useRef<() => Promise<void>>(async () => undefined);
+  const doSave = useCallback(async (): Promise<void> => {
+    if (saving.current) { timer.current = setTimeout(() => void doSaveRef.current(), 500); return; }
     saving.current = true;
     setSave("saving");
     const snapshot = hist.current.value;
     try {
       const r = await api(`/api/versions/${props.versionId}/content`, { method: "PUT", body: { content: snapshot, rev: revRef.current } });
       setRev(r.rev); revRef.current = r.rev; setSavedAt(new Date());
-      if (hist.current.value === snapshot) { dirty.current = false; setSave("saved"); } else { setSave("dirty"); timer.current = setTimeout(doSave, 300); }
+      if (hist.current.value === snapshot) { dirty.current = false; setSave("saved"); } else { setSave("dirty"); timer.current = setTimeout(() => void doSaveRef.current(), 300); }
     } catch (e) {
       if (e instanceof ApiError && e.status === 409) setSave("conflict"); else { setSave("error"); flash(e instanceof ApiError ? e.message : "Autosave failed"); }
     } finally { saving.current = false; }
   }, [props.versionId, flash]);
+  useEffect(() => { doSaveRef.current = doSave; }, [doSave]);
 
   const schedule = useCallback(() => {
     dirty.current = true; setSave("dirty");
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(doSave, 1200);
-  }, [doSave]);
+    timer.current = setTimeout(() => void doSaveRef.current(), 1200);
+  }, []);
 
   const commit = useCallback((next: GuideContent, key?: string) => {
     if (props.readOnly) return;
     const now = Date.now();
     if (key && lastKey.current?.key === key && now - lastKey.current.t < 1500) hist.current.replace(next); else hist.current.push(next);
     lastKey.current = key ? { key, t: now } : null;
-    setContent(next); schedule(); force((n) => n + 1);
+    setContent(next); schedule(); syncHist();
   }, [schedule, props.readOnly]);
 
-  const undo = () => { setContent(hist.current.undo()); schedule(); force((n) => n + 1); };
-  const redo = () => { setContent(hist.current.redo()); schedule(); force((n) => n + 1); };
+  const undo = () => { setContent(hist.current.undo()); schedule(); syncHist(); };
+  const redo = () => { setContent(hist.current.redo()); schedule(); syncHist(); };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.ctrlKey || e.metaKey;
@@ -93,14 +96,16 @@ export function Editor(props: {
   async function runHealth() {
     try { const r = await api(`/api/versions/${props.versionId}/health`); setFindings(r.findings); setAssessment(r.assessment.summary); } catch (e) { flash(e instanceof ApiError ? e.message : "Health check failed"); }
   }
-  useEffect(() => { void runHealth(); /* eslint-disable-next-line */ }, []);
+  // Initial data load (state is set after the awaited request, not synchronously).
+  // eslint-disable-next-line react-hooks/set-state-in-effect, react-hooks/exhaustive-deps
+  useEffect(() => { void runHealth(); }, []);
 
   async function decide(id: string, decision: "ACCEPTED" | "REJECTED") {
     try {
       await api(`/api/suggestions/${id}`, { body: { decision } });
       if (decision === "ACCEPTED") { // reload latest content so the accepted change (applied server-side) is reflected
         const v = await api(`/api/versions/${props.versionId}`);
-        hist.current = new History<GuideContent>(v.content); setContent(v.content); setRev(v.rev); revRef.current = v.rev; force((n) => n + 1);
+        hist.current = new History<GuideContent>(v.content); setContent(v.content); setRev(v.rev); revRef.current = v.rev; syncHist();
       }
       setSuggestions((s) => s.map((x) => (x.id === id ? { ...x, status: decision } : x)));
       flash(decision === "ACCEPTED" ? "Suggestion accepted into the draft" : "Suggestion rejected");
@@ -125,16 +130,16 @@ export function Editor(props: {
   const annotStep = annotFor ? findStep(content.steps, annotFor) : undefined;
   const sections = props.template.sections.filter((s) => s.enabled);
   const sectionOn = (k: TemplateSection["key"]) => sections.find((s) => s.key === k);
-  const Text = ({ k, label, rows }: { k: "purpose" | "scope" | "audience" | "expectedResult"; label: string; rows?: number }) => {
+  const renderText = (k: "purpose" | "scope" | "audience" | "expectedResult", rows?: number) => {
     const sec = sectionOn(k);
     if (!sec) return null;
-    return <label className="field">{sec.label}{sec.required ? " *" : ""} {sec.hint ? <span className="hint">{sec.hint}</span> : null}<textarea rows={rows ?? 3} value={content[k]} onChange={(e) => patch({ [k]: e.target.value }, k)}/></label>;
+    return <label key={k} className="field">{sec.label}{sec.required ? " *" : ""} {sec.hint ? <span className="hint">{sec.hint}</span> : null}<textarea rows={rows ?? 3} value={content[k]} onChange={(e) => patch({ [k]: e.target.value }, k)} /></label>;
   };
-  const ListF = ({ k }: { k: TemplateSection["key"] }) => {
+  const renderList = (k: TemplateSection["key"]) => {
     const sec = sectionOn(k); const field = LIST_FIELDS[k];
     if (!sec || !field) return null;
     const val = (content[field] as string[]).join("\n");
-    return <label className="field">{sec.label}{sec.required ? " *" : ""} <span className="hint">One item per line.</span><textarea rows={3} value={val} onChange={(e) => patch({ [field]: e.target.value.split("\n") } as Partial<GuideContent>, k)} onBlur={() => patch({ [field]: (content[field] as string[]).map((x) => x.trim()).filter(Boolean) } as Partial<GuideContent>)} /></label>;
+    return <label key={k} className="field">{sec.label}{sec.required ? " *" : ""} <span className="hint">One item per line.</span><textarea rows={3} value={val} onChange={(e) => patch({ [field]: e.target.value.split("\n") } as Partial<GuideContent>, k)} onBlur={() => patch({ [field]: (content[field] as string[]).map((x) => x.trim()).filter(Boolean) } as Partial<GuideContent>)} /></label>;
   };
 
   const saveLabel = save === "saved" ? `Saved${savedAt ? " at " + savedAt.toLocaleTimeString() : ""}` : save === "saving" ? "Saving…" : save === "dirty" ? "Unsaved changes" : save === "conflict" ? "Conflict: changed elsewhere" : "Save failed";
@@ -153,8 +158,8 @@ export function Editor(props: {
         <div className="btn-row" style={{ justifyContent: "space-between" }}>
           <div><strong>{props.documentId} v{props.label}</strong> <span className="badge neutral">{props.status.replaceAll("_", " ").toLowerCase()}</span> {props.readOnly ? <span className="badge warn">Read-only</span> : null}</div>
           <div className="btn-row">
-            <button type="button" className="btn btn-sm" onClick={undo} disabled={!hist.current.canUndo || props.readOnly} aria-keyshortcuts="Control+Z">Undo</button>
-            <button type="button" className="btn btn-sm" onClick={redo} disabled={!hist.current.canRedo || props.readOnly} aria-keyshortcuts="Control+Y">Redo</button>
+            <button type="button" className="btn btn-sm" onClick={undo} disabled={!histFlags.canUndo || props.readOnly} aria-keyshortcuts="Control+Z">Undo</button>
+            <button type="button" className="btn btn-sm" onClick={redo} disabled={!histFlags.canRedo || props.readOnly} aria-keyshortcuts="Control+Y">Redo</button>
             <span className="saving muted" role="status" aria-live="polite" data-testid="save-status">{saveLabel}</span>
             {save === "conflict" ? <button className="btn btn-sm btn-danger" onClick={() => window.location.reload()}>Reload latest</button> : null}
             <div role="group" aria-label="View mode" className="btn-row">
@@ -174,7 +179,7 @@ export function Editor(props: {
             <fieldset disabled={props.readOnly} style={{ border: 0, padding: 0, margin: 0 }}>
               <section className="card" aria-labelledby="ed-details"><h2 id="ed-details">Details</h2>
                 <label className="field">Title *<input value={content.title} onChange={(e) => patch({ title: e.target.value }, "title")} /></label>
-                <Text k="purpose" label="Purpose" /><Text k="scope" label="Scope" /><Text k="audience" label="Audience" rows={2} />
+                {renderText("purpose")}{renderText("scope")}{renderText("audience", 2)}
                 {sectionOn("responsibilities") ? (
                   <fieldset><legend>{sectionOn("responsibilities")!.label}{sectionOn("responsibilities")!.required ? " *" : ""}</legend>
                     {content.responsibilities.map((r, i) => (
@@ -187,7 +192,7 @@ export function Editor(props: {
                     <button type="button" className="btn btn-sm" onClick={() => patch({ responsibilities: [...content.responsibilities, { role: "", responsibility: "" }] })}>Add responsibility</button>
                   </fieldset>
                 ) : null}
-                {(["prerequisites", "permissions", "equipment", "ppe", "hazards", "training", "qualityRequirements", "regulatory", "policies"] as const).map((k) => <ListF key={k} k={k} />)}
+                {(["prerequisites", "permissions", "equipment", "ppe", "hazards", "training", "qualityRequirements", "regulatory", "policies"] as const).map((k) => renderList(k))}
               </section>
 
               <section className="card" style={{ marginTop: 16 }} aria-labelledby="ed-steps"><h2 id="ed-steps">Procedure</h2>
@@ -195,8 +200,8 @@ export function Editor(props: {
               </section>
 
               <section className="card" style={{ marginTop: 16 }} aria-labelledby="ed-after"><h2 id="ed-after">Result, checks and support</h2>
-                <Text k="expectedResult" label="Expected result" />
-                <ListF k="validationChecks" />
+                {renderText("expectedResult")}
+                {renderList("validationChecks")}
                 {sectionOn("troubleshooting") ? (
                   <fieldset><legend>{sectionOn("troubleshooting")!.label}</legend>
                     {content.troubleshooting.map((t, i) => (

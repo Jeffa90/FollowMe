@@ -8,7 +8,7 @@ export function LoginForm() {
   const [err, setErr] = useState("");
   useEffect(() => { fetch("/api/auth/dev-users").then((r) => r.json()).then((d) => setUsers(d.users ?? [])).catch(() => setErr("Could not load users")); }, []);
   async function login(email: string) {
-    try { await api("/api/auth/login", { body: { email } }); window.location.href = "/"; } catch (e: any) { setErr(e.message); }
+    try { await api("/api/auth/login", { body: { email } }); window.location.assign("/"); } catch (e: any) { setErr(e.message); }
   }
   return (
     <section aria-labelledby="sim">
