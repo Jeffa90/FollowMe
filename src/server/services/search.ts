@@ -38,7 +38,7 @@ export async function removeFromIndex(guideId: string, db: Db = prisma) {
 
 const clean = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
 
-async function synonymGroups(orgId: string, terms: string[]): Promise<string[][]> {
+export async function synonymGroups(orgId: string, terms: string[]): Promise<string[][]> {
   const syn = await prisma.synonym.findMany({ where: { orgId } });
   return terms.map((t) => {
     const alts = new Set<string>();
@@ -50,7 +50,7 @@ async function synonymGroups(orgId: string, terms: string[]): Promise<string[][]
   });
 }
 
-function tsQueryFrom(groups: string[][], op: "&" | "|"): string {
+export function tsQueryFrom(groups: string[][], op: "&" | "|"): string {
   const parts = groups.map((alts) => {
     const forms = alts
       .map((a, i) => {
@@ -165,4 +165,45 @@ export async function suggestForContext(ctx: Ctx, input: { url?: string; sapTran
     if (reason) out.push({ documentId: g.documentId, title: g.title, reason });
   }
   return out;
+}
+
+export interface RetrievedChunk {
+  id: string; guideId: string; versionId: string; stepId: string | null; kind: string; title: string; text: string; rank: number; documentId: string; guideTitle: string; versionLabel: string;
+}
+
+const QA_STOP = new Set(["what", "how", "do", "does", "did", "the", "an", "to", "in", "of", "for", "is", "are", "can", "could", "should", "when", "where", "my", "me", "we", "you", "it", "if", "on", "and", "or", "with", "need", "which", "who", "i", "there", "this", "that", "be", "been", "have", "has", "about", "please", "tell", "show", "want", "would", "will", "get", "use", "using", "am", "at", "as", "by", "from", "any", "some"]);
+export const significantTerms = (q: string) => q.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !QA_STOP.has(t));
+
+/**
+ * Permission-aware retrieval for the assistant. Only chunks of LIVE versions the caller may read (org, clearance, site) and that
+ * the AI policy allows (content type / classification) can ever be returned. Drafts, superseded and archived content are not indexed.
+ */
+export async function retrieveChunks(ctx: Ctx, q: string, opts: { documentId?: string; k?: number; disabledTemplateKeys?: string[]; disabledClassifications?: string[] } = {}): Promise<{ chunks: RetrievedChunk[]; terms: string[]; coverage: (c: RetrievedChunk) => number }> {
+  const terms = significantTerms(q).slice(0, 10);
+  const groups = terms.length ? await synonymGroups(ctx.orgId, terms) : [];
+  const empty = { chunks: [], terms, coverage: () => 0 };
+  if (!terms.length) return empty;
+  const tsq = tsQueryFrom(groups, "|");
+  if (!tsq) return empty;
+  const cls = allowedClassifications(ctx).filter((c) => !(opts.disabledClassifications ?? []).includes(c));
+  const conds: Prisma.Sql[] = [
+    Prisma.sql`g."orgId" = ${ctx.orgId}`, Prisma.sql`g."archivedAt" IS NULL`, Prisma.sql`g."liveVersionId" = c."versionId"`,
+    Prisma.sql`g."classification"::text = ANY(${cls as string[]})`,
+  ];
+  if ((opts.disabledTemplateKeys ?? []).length) conds.push(Prisma.sql`t."key" <> ALL(${opts.disabledTemplateKeys as string[]})`);
+  if (!ctx.allSites) conds.push(Prisma.sql`(g."siteId" IS NULL OR g."siteId" = ANY(${[...ctx.siteIds, ...(ctx.siteId ? [ctx.siteId] : [])]}))`);
+  if (opts.documentId) conds.push(Prisma.sql`g."documentId" = ${opts.documentId}`);
+  const rows = await prisma.$queryRaw<{ id: string; guideId: string; versionId: string; stepId: string | null; kind: string; title: string; text: string; rank: number; documentId: string; guideTitle: string; versionLabel: string }[]>(Prisma.sql`
+    SELECT c."id", c."guideId", c."versionId", c."stepId", c."kind", c."title", c."text", ts_rank_cd(c."tsv", query) AS rank, g."documentId", g."title" AS "guideTitle", v."label" AS "versionLabel"
+    FROM "SearchChunk" c JOIN "Guide" g ON g."id" = c."guideId" JOIN "Template" t ON t."id" = g."templateId" JOIN "GuideVersion" v ON v."id" = c."versionId",
+    to_tsquery('english', ${tsq}) query
+    WHERE c."tsv" @@ query AND ${Prisma.join(conds, " AND ")}
+    ORDER BY rank DESC LIMIT ${opts.k ?? 12}`);
+  const stem = (w: string) => w.slice(0, Math.min(5, w.length));
+  const coverage = (c: { text: string; title: string }) => {
+    const words = `${c.title} ${c.text}`.toLowerCase().split(/[^a-z0-9]+/);
+    const covered = groups.filter((alts) => alts.some((a) => a.split(/\s+/).every((w) => words.some((cw) => cw.startsWith(stem(w)))))).length;
+    return covered / groups.length;
+  };
+  return { chunks: rows, terms, coverage };
 }

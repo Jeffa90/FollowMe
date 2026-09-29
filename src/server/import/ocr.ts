@@ -4,13 +4,14 @@ import { env } from "../env";
 import { AppError } from "../errors";
 
 export interface OcrResult { text: string; confidence: number; lines: { text: string; confidence: number }[] }
-export interface OcrProvider { name: string; recognize(image: Buffer): Promise<OcrResult> }
+export interface OcrOptions { /** Sparse mode finds isolated labels (buttons, fields) rather than flowing paragraphs. */ sparse?: boolean }
+export interface OcrProvider { name: string; recognize(image: Buffer, opts?: OcrOptions): Promise<OcrResult> }
 
 class TesseractCli implements OcrProvider {
   name = "tesseract";
-  recognize(image: Buffer): Promise<OcrResult> {
+  recognize(image: Buffer, opts: OcrOptions = {}): Promise<OcrResult> {
     return new Promise((resolve, reject) => {
-      const p = spawn("tesseract", ["stdin", "stdout", "--psm", "6", "tsv"], { stdio: ["pipe", "pipe", "pipe"] });
+      const p = spawn("tesseract", ["stdin", "stdout", "--psm", opts.sparse ? "11" : "6", "tsv"], { stdio: ["pipe", "pipe", "pipe"] });
       let out = "", err = "";
       p.stdout.on("data", (d) => (out += d));
       p.stderr.on("data", (d) => (err += d));

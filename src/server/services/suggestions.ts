@@ -7,7 +7,7 @@ import { forbidden, notFound, conflict, unprocessable } from "../errors";
 import { getVersionDetail, saveContent } from "./guides";
 import { newStep, newId, flattenSteps, type GuideContent, type Step } from "../../lib/guide-schema";
 
-export const SUGGESTION_KINDS = ["warning", "validation", "note", "rewrite", "prerequisite", "acronym", "quiz", "summary", "faq", "translation", "mismatch"] as const;
+export const SUGGESTION_KINDS = ["warning", "validation", "note", "rewrite", "prerequisite", "acronym", "quiz", "summary", "faq", "translation", "mismatch", "term"] as const;
 export interface SuggestionInput { kind: (typeof SUGGESTION_KINDS)[number]; stepId?: string; payload: Record<string, unknown>; uncertainty?: Record<string, unknown> }
 
 export async function createSuggestions(ctx: Ctx, versionId: string, items: SuggestionInput[], provider: string, promptVersion: string) {
