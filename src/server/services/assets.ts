@@ -103,3 +103,12 @@ export async function cropAsset(ctx: Ctx, assetId: string, rect: { x: number; y:
   await audit(ctx, null, { action: "IMAGE_CROPPED", entityType: "Asset", entityId: a.id, guideId: a.guideId, summary: `Cropped image ${assetId} -> ${a.id}`, detail: { rect, source: assetId } });
   return a;
 }
+
+/** Content-addressed copy: a new CONTENT asset row pointing at the same immutable blob as an evidence asset. Editing never touches evidence. */
+export async function copyAssetAsContent(ctx: Pick<Ctx, "orgId" | "userId">, srcAssetId: string, guideId: string) {
+  const ev = await prisma.asset.findFirst({ where: { id: srcAssetId, orgId: ctx.orgId } });
+  if (!ev) throw notFound("File");
+  const copy = await prisma.asset.create({ data: { orgId: ev.orgId, sha256: ev.sha256, mime: ev.mime, size: ev.size, storageKey: ev.storageKey, originalName: ev.originalName, purpose: "CONTENT", width: ev.width, height: ev.height, createdById: ctx.userId, guideId, captureSessionId: ev.captureSessionId, importItemId: ev.importItemId } });
+  if (!ev.guideId) await prisma.asset.update({ where: { id: ev.id }, data: { guideId } });
+  return copy;
+}
