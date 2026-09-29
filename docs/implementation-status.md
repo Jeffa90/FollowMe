@@ -28,7 +28,7 @@ Health engine (20+ explainable rules, exceptions) · recommendations · orphan d
 Completed: docs under `docs/01-discovery`, `02-architecture`, `03-ux`. Tested: n/a (design docs are checked against code by review; contract-style tests exist for OpenAPI). Deferred: none. Concern: integrations are design-only.
 ### Phase 4 (Setup) – completed: Next 16/Prisma 7/PG16, migrations with triggers, seed, Vitest+Playwright harnesses, Docker/CI files. Failed along the way: interactive `prisma migrate dev` hangs in non-TTY (used `migrate deploy`). Deferred: Docker/CI execution.
 ### Phase 5 (Vertical slices) – completed: foundation → lifecycle → capture/extension → import → exports → AI/health/analytics/admin → process maps. Bugs found by tests and fixed: audit hash instability across JSONB round-trip; password leaking via URL query string (now stripped); lost events when a click navigates (pending-event map); process-map reachability loop; re-generation of discarded recordings; editor inline components losing focus (found by lint, regression-tested).
-### Phase 6 (Validation) – 91 Vitest + 16 Playwright tests, typecheck and lint clean (0 errors). See `test-report.md`.
+### Phase 6 (Validation) – 97 Vitest + 16 Playwright tests, typecheck and lint clean (0 errors). See `test-report.md`.
 
 ## Next implementation action
 Entra ID OIDC (`AUTH_MODE=entra`): callback route, user provisioning from claims, group→role mapping table, then the SharePoint/Teams embedding app and an S3/MinIO integration test.

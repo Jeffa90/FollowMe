@@ -233,7 +233,7 @@ Guide views/use ✅ · search success & failed ✅ · feedback & outdated report
 | Chromium extension | ✅ | |
 | DOCX/PDF parsing; OCR abstraction; Word/PDF generation | ✅ | X, E |
 | Docker Compose; CI workflow | 🟡 | written, not executed in sandbox |
-| Playwright, unit, integration, security, accessibility tests | ✅ | 91 + 16 tests |
+| Playwright, unit, integration, security, accessibility tests | ✅ | 97 + 16 tests |
 | Integration adapters (Entra, Graph, SharePoint, Teams, Power Automate, email, LMS, enterprise AI) | ⏳ (webhooks ✅, AI provider interface ✅) | `integrations.md` |
 
 ## MVP items and acceptance journeys
