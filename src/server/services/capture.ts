@@ -110,7 +110,9 @@ export async function setSessionStatus(ctx: Ctx, id: string, status: "RECORDING"
   const s = await ownedSession(ctx, id);
   const policy = await getCapturePolicy(ctx);
   if (!policy.enabled && status === "RECORDING") throw forbidden("Capture is disabled by your organisation (kill switch)");
-  if (["STOPPED", "PROCESSED", "DISCARDED"].includes(s.status) && s.status !== status) throw conflict(`Session is already ${s.status}`);
+  // Allowed: RECORDING<->PAUSED, (RECORDING|PAUSED)->STOPPED, anything not yet processed -> DISCARDED. Nothing leaves PROCESSED/DISCARDED.
+  const ended = ["STOPPED", "PROCESSED", "DISCARDED"].includes(s.status);
+  if (s.status !== status && (["PROCESSED", "DISCARDED"].includes(s.status) || (ended && status !== "DISCARDED"))) throw conflict(`Session is already ${s.status}`);
   const u = await prisma.captureSession.update({ where: { id }, data: { status, ...(status === "STOPPED" || status === "DISCARDED" ? { endedAt: new Date() } : {}) } });
   await audit(ctx, null, { action: `CAPTURE_${status}`, entityType: "CaptureSession", entityId: id, summary: `Capture ${status.toLowerCase()} (${u.eventCount} events)` });
   return u;
@@ -149,6 +151,7 @@ function toCaptured(rows: Awaited<ReturnType<typeof prisma.captureEvent.findMany
 
 export async function generateGuideFromSession(ctx: Ctx, sessionId: string, opts: { title?: string; templateKey?: string; metadata?: GuideMetadata } = {}) {
   const s = await ownedSession(ctx, sessionId);
+  if (s.status === "DISCARDED") throw conflict("This recording was discarded");
   if (s.status === "RECORDING" || s.status === "PAUSED") throw conflict("Stop the recording before generating a guide");
   if (s.guideId) throw conflict("A guide was already generated from this recording", { guideId: s.guideId });
   const rows = await prisma.captureEvent.findMany({ where: { sessionId }, orderBy: { seq: "asc" } });
@@ -171,6 +174,7 @@ export async function generateGuideFromSession(ctx: Ctx, sessionId: string, opts
 /** "Add missed steps by recording again": generate steps from another session and insert them into an editable version. */
 export async function appendSessionToVersion(ctx: Ctx, versionId: string, sessionId: string, afterStepId?: string) {
   const s = await ownedSession(ctx, sessionId);
+  if (s.status === "DISCARDED") throw conflict("This recording was discarded");
   if (s.status === "RECORDING" || s.status === "PAUSED") throw conflict("Stop the recording first");
   const d = await getVersionDetail(ctx, versionId);
   if (!d.canEdit) throw forbidden("You cannot edit this version");
@@ -212,7 +216,9 @@ export async function compareSessionWithGuide(ctx: Ctx, sessionId: string, guide
   const rows = await prisma.captureEvent.findMany({ where: { sessionId }, orderBy: { seq: "asc" } });
   const gen = generateFromEvents(toCaptured(rows));
   const onlyActions = (steps: Step[]) => steps.filter((x) => x.kind === "action");
-  const diff = compareContent({ ...v.content, steps: onlyActions(v.content.steps) }, { ...gen.content, steps: onlyActions(gen.content.steps) }, 0.4);
+  // Screenshots always differ between a guide and a fresh recording; compare wording only.
+  const textOnly = (steps: Step[]) => onlyActions(steps).map((x) => ({ ...x, image: undefined }));
+  const diff = compareContent({ ...v.content, steps: textOnly(v.content.steps) }, { ...gen.content, steps: textOnly(gen.content.steps) }, 0.4);
   const mismatches = diff.steps.filter((x) => x.status !== "unchanged").length;
   let recommendationId: string | null = null;
   if (opts.fileRecommendation && mismatches > 0) {

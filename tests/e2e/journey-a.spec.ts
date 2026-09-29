@@ -100,7 +100,7 @@ test("Journey A: record, edit, review, approve, publish and search a process", a
     await expect.poll(titles).toContain("Click Submit claim");
     const allTitles = await titles();
     expect(allTitles.join("|")).not.toContain("New claim"); // the click made while paused was not recorded
-    expect(allTitles.some((t) => t.includes("Choose Meals"))).toBe(true);
+    expect(allTitles.some((t) => t.includes("Choose Meals")), `titles: ${JSON.stringify(allTitles)} events: ${JSON.stringify(events.map((e) => [e.type, e.target.tag, e.target.selectorHint, e.target.inputType]))}`).toBe(true);
     // The step during the paused interval ("New claim" click) was not recorded
     const steps = await web.locator("li.step-edit").count();
     expect(steps).toBeGreaterThanOrEqual(4);

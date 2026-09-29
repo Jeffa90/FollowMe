@@ -48,9 +48,22 @@ function upload(rec, event) {
   return queue;
 }
 
+// Sequence numbers are allocated atomically. Several events can finish their screenshots at the same moment, and each
+// flush reads its own copy of the recording state; a shared counter inside that copy would hand out duplicate numbers,
+// and the server (rightly) treats a repeated seq as a retried upload and keeps only the first event.
+let seqChain = Promise.resolve();
+function nextSeq() {
+  const p = seqChain.then(async () => {
+    const n = (await S.get("seqNext")).seqNext || 0;
+    await S.set({ seqNext: n + 1 });
+    return n;
+  });
+  seqChain = p.catch(() => undefined);
+  return p;
+}
+
 async function record(rec, partial) {
-  const seq = rec.seq++;
-  await setState(rec);
+  const seq = await nextSeq();
   return upload(rec, { seq, ...partial, url: safeUrl(partial.url) });
 }
 
@@ -76,7 +89,8 @@ async function start(tabId) {
   if (!policy.enabled) throw new Error("Capture is disabled by your organisation.");
   if (hostRestricted(hostOf(tab.url), policy.restrictedDomains)) throw new Error(`Recording is not permitted on ${hostOf(tab.url)}.`);
   const s = await api("/api/capture/sessions", { method: "POST", body: JSON.stringify({ startUrl: safeUrl(tab.url), title: tab.title, extensionVersion: VERSION }) });
-  const rec = { status: "recording", sessionId: s.id, tabId, seq: 0, policy, lastUrl: safeUrl(tab.url), baseUrl: cfg.baseUrl };
+  await S.set({ seqNext: 0 });
+  const rec = { status: "recording", sessionId: s.id, tabId, policy, lastUrl: safeUrl(tab.url), baseUrl: cfg.baseUrl };
   await setState(rec);
   await inject(tabId);
   await pushState(rec);
